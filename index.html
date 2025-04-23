@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>O Quadradinho e a Missão Escala</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Courier New', monospace;
+      background-color: #111;
+      color: white;
+      text-align: center;
+    }
+    #intro-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    #textbox {
+      width: 80%;
+      max-width: 600px;
+      padding: 20px;
+      border: 2px solid white;
+      border-radius: 10px;
+      background-color: #222;
+    }
+    #story-text {
+      font-size: 18px;
+      text-align: left;
+      white-space: pre-line;
+    }
+    #next-btn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #next-btn:hover {
+      background-color: #2980b9;
+    }
+    #quadradinho {
+      width: 60px;
+      height: 60px;
+      background-color: #3498db;
+      margin: 20px auto 0;
+      position: relative;
+      border-radius: 10px;
+      display: none;
+    }
+    .olho {
+      width: 10px;
+      height: 10px;
+      background: white;
+      border-radius: 50%;
+      position: absolute;
+      top: 15px;
+    }
+    #olho-esquerdo { left: 12px; }
+    #olho-direito { right: 12px; }
+    canvas {
+      background-color: #222;
+      display: none;
+      margin: 20px auto;
+      border: 4px solid #00ff88;
+    }
+  </style>
+</head>
+<body>
+  <audio id="typingSound" src="path/typing.mp3"></audio>
+  <div id="intro-container">
+    <div id="textbox">
+      <p id="story-text"></p>
+      <button id="next-btn">Próximo</button>
+    </div>
+    <div id="quadradinho">
+      <div class="olho" id="olho-esquerdo"></div>
+      <div class="olho" id="olho-direito"></div>
+    </div>
+  </div>
+
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+  <script>
+    const textos = [
+      "Era uma vez, em um mundo feito apenas de formas geométricas...",
+      "Um pequeno quadradinho azul vivia tranquilamente com seus amigos: o círculo saltitante, o triângulo veloz e o retângulo sábio.",
+      "Mas um dia, uma tempestade de pixels bagunçou todo o mapa!",
+      "Seus amigos desapareceram, espalhados por labirintos cheios de enigmas e desafios...",
+      "Agora, só o Quadradinho pode encontrá-los e restaurar a harmonia do Mundo Geométrico.",
+      "Sua missão começa agora."
+    ];
+
+    let index = 0;
+    const storyText = document.getElementById('story-text');
+    const nextBtn = document.getElementById('next-btn');
+    const quadradinho = document.getElementById('quadradinho');
+    const typingSound = document.getElementById('typingSound');
+
+    function mostrarTextoComEfeito(texto, callback) {
+      let i = 0;
+      storyText.textContent = "";
+      const intervalo = setInterval(() => {
+        storyText.textContent += texto[i];
+        typingSound.currentTime = 0;
+        typingSound.play();
+        i++;
+        if (i >= texto.length) {
+          clearInterval(intervalo);
+          if (callback) callback();
+        }
+      }, 50); // Velocidade mais lenta
+    }
+
+    nextBtn.addEventListener('click', () => {
+      if (index < textos.length) {
+        mostrarTextoComEfeito(textos[index]);
+        index++;
+        if (index === textos.length) {
+          nextBtn.textContent = "Começar a Missão!";
+        }
+      } else {
+        document.getElementById('intro-container').style.display = "none";
+        document.getElementById('gameCanvas').style.display = "block";
+        startGame();
+      }
+    });
+
+    mostrarTextoComEfeito(textos[index]);
+    index++;
+  </script>
+
+  <script>
+    let canvas, ctx;
+    let player, bullets, figures, goodFigures, powerUps;
+    let score, level, keys, gameOver, canShoot, figureCount;
+    let backgroundMusic, shootSound, hitSound, powerUpSound;
+
+    function startGame() {
+      canvas = document.getElementById('gameCanvas');
+      ctx = canvas.getContext('2d');
+
+      player = { x: 380, y: 540, width: 40, height: 40, speed: 3, color: '#00ff88' };
+      bullets = [];
+      figures = [];
+      goodFigures = [];
+      powerUps = [];
+      score = 0;
+      level = 1;
+      keys = {};
+      gameOver = false;
+      canShoot = true;
+      figureCount = { good: 0, bad: 0 };
+
+      backgroundMusic = new Audio('path/background-music.mp3');
+      shootSound = new Audio('path/shoot-sound.mp3');
+      hitSound = new Audio('path/hit-sound.mp3');
+      powerUpSound = new Audio('path/powerup-sound.mp3');
+
+      document.addEventListener('keydown', (e) => keys[e.code] = true);
+      document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+      backgroundMusic.loop = true;
+      backgroundMusic.play();
+      spawnFigures();
+      gameLoop();
+    }
+
+    function drawPlayer() {
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
+function drawBullet(bullet) {
+  ctx.fillStyle = 'yellow';
+  ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+}
+
+function drawFigure(f, isGood) {
+  ctx.fillStyle = isGood ? '#44f' : '#f44';
+  const size = isGood ? f.size * f.scale : f.size;
+
+  if (isGood) {
+    ctx.fillRect(f.x, f.y, size, size);
+  } else {
+    const randomShape = Math.floor(Math.random() * 3);
+    if (randomShape === 0) {
+      ctx.beginPath();
+      ctx.moveTo(f.x, f.y);
+      ctx.lineTo(f.x + size, f.y);
+      ctx.lineTo(f.x + size / 2, f.y - size);
+      ctx.closePath();
+      ctx.fill();
+    } else if (randomShape === 1) {
+      ctx.fillRect(f.x, f.y, size, size / 2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(f.x + size / 2, f.y + size / 2, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawPowerUp(pu) {
+  ctx.fillStyle = '#ff0';
+  ctx.beginPath();
+  ctx.arc(pu.x, pu.y, 15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function spawnFigures() {
+  figures = [];
+  goodFigures = [];
+  for (let i = 0; i < level * 1.5; i++) {
+    figures.push({ x: Math.random() * 760, y: Math.random() * 200, size: 30, scale: 1 + Math.random() * 2, speed: 0.7 });
+  }
+  for (let i = 0; i < level; i++) {
+    goodFigures.push({ x: Math.random() * 760, y: Math.random() * 200, size: 30 + Math.random() * 40, scale: Math.random() > 0.5 ? 0.5 : 2, speed: 0.7 });
+  }
+  if (Math.random() > 0.8) {
+    powerUps.push({ x: Math.random() * 760, y: Math.random() * 200, type: 'speed' });
+  }
+}
+
+function update() {
+  if (gameOver) return;
+
+  if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
+  if (keys['ArrowRight'] && player.x + player.width < canvas.width) player.x += player.speed;
+
+  if (keys['Space'] && canShoot) {
+    bullets.push({ x: player.x + player.width / 2 - 2, y: player.y, width: 4, height: 10 });
+    shootSound.play();
+    canShoot = false;
+    setTimeout(() => { canShoot = true; }, 400);
+  }
+
+  bullets.forEach(b => b.y -= 5);
+  bullets = bullets.filter(b => b.y > 0);
+
+  figures.forEach(f => f.y += f.speed);
+  goodFigures.forEach(g => g.y += g.speed);
+  powerUps.forEach(pu => pu.y += 0.7);
+
+  checkCollisions();
+  checkCollections();
+
+  if (figures.every(f => f.y > canvas.height) && goodFigures.every(g => g.y > canvas.height)) {
+    level++;
+    if (level % 2 === 0) {
+      player.color = player.color === '#00ff88' ? '#ff8800' : '#00ff88';
+    }
+    spawnFigures();
+  }
+}
+
+function checkCollisions() {
+  bullets.forEach((b, bi) => {
+    figures.forEach((f, fi) => {
+      if (b.x < f.x + f.size * f.scale && b.x + b.width > f.x && b.y < f.y + f.size && b.y + b.height > f.y) {
+        score += 10;
+        figureCount.bad++;
+        hitSound.play();
+        figures.splice(fi, 1);
+        bullets.splice(bi, 1);
+      }
+    });
+
+    goodFigures.forEach((g, gi) => {
+      if (b.x < g.x + g.size * g.scale && b.x + b.width > g.x && b.y < g.y + g.size && b.y + b.height > g.y) {
+        score -= 15;
+        figureCount.good++;
+        goodFigures.splice(gi, 1);
+        bullets.splice(bi, 1);
+      }
+    });
+
+    powerUps.forEach((pu, pi) => {
+      if (b.x < pu.x + 15 && b.x + b.width > pu.x && b.y < pu.y + 15 && b.y + b.height > pu.y - 15) {
+        score += 20;
+        powerUpSound.play();
+        powerUps.splice(pi, 1);
+      }
+    });
+  });
+}
+
+function checkCollections() {
+  goodFigures.forEach((g, gi) => {
+    if (
+      player.x < g.x + g.size * g.scale &&
+      player.x + player.width > g.x &&
+      player.y < g.y + g.size &&
+      player.y + player.height > g.y
+    ) {
+      score += 20;
+      figureCount.good++;
+      goodFigures.splice(gi, 1);
+    }
+  });
+
+  powerUps.forEach((pu, pi) => {
+    if (
+      player.x < pu.x + 15 && 
+      player.x + player.width > pu.x - 15 &&
+      player.y < pu.y + 15 && 
+      player.y + player.height > pu.y - 15
+    ) {
+      score += 50;
+      powerUpSound.play();
+      powerUps.splice(pi, 1);
+    }
+  });
+}
+
+function drawHUD() {
+  ctx.fillStyle = 'white';
+  ctx.font = '16px Arial';
+  ctx.fillText(`Pontuação: ${score}`, 10, 20);
+  ctx.fillText(`Fase: ${level}`, 10, 40);
+}
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  update();
+
+  drawPlayer();
+  bullets.forEach(b => drawBullet(b));
+  figures.forEach(f => drawFigure(f, false));
+  goodFigures.forEach(f => drawFigure(f, true));
+  powerUps.forEach(pu => drawPowerUp(pu));
+
+  drawHUD();
+
+  if (gameOver) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.font = '40px Arial';
+    ctx.fillText('Game Over', canvas.width / 2 - 100, canvas.height / 2);
+    ctx.fillText(`Pontuação Final: ${score}`, canvas.width / 2 - 130, canvas.height / 2 + 40);
+    return;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+  </script>
+</body>
+</html>
